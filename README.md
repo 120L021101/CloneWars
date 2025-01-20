@@ -1,8 +1,4 @@
-# ML4SE Deduplication Exploration Project - Group 14
-
-This repository contains the project work done for
-the [CS4570 Machine Learning for Software Engineering](https://studiegids.tudelft.nl/a101_displayCourse.do?course_id=70144)
-Master's course at TU Delft. More specifically our team chose the project on:
+## Introduction 
 
 > _Examine how different code deduplication levels (exact/near/semantic) impact LLM performance in code tasks.
 One extension would be to look into different MinHashLSH configurations compared
