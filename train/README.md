@@ -1,0 +1,1 @@
+run "sbatch job.sh" to submit the job and start training
