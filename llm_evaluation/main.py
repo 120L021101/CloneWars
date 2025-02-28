@@ -1,6 +1,5 @@
 import argparse
 import logging
-
 import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer
@@ -11,112 +10,65 @@ from llm_evaluation.eval_pipeline import EvalPipeline
 from llm_evaluation.pre_processing import PreProcessing
 
 # Set up logging
-logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s]:  %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+logger = logging.getLogger(__name__)
 
-if __name__ == "__main__":
-    # Logging for debugging purposes on DelftBlue
-    logger.info(f"Cuda's version: {torch.version.cuda}")
-    logger.info(f"Is Cuda available: {torch.cuda.is_available()}")
+def main():
+    # Log CUDA information
+    logger.info(f"CUDA version: {torch.version.cuda}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
 
-    parser = argparse.ArgumentParser(
-        description="Evaluate the CodeParrot model on code completion tasks."
-    )
+    # Argument parsing
+    parser = argparse.ArgumentParser(description="Evaluate CodeParrot model on code completion tasks.")
+    parser.add_argument("-m", "--model", type=str, default="codeparrot/codeparrot",
+                        help="Model for code completion evaluation (default: CodeParrot).")
+    parser.add_argument("-d", "--dataset", type=str, default="nada-mou/ML4SE-exact-dedup-file-final",
+                        help="Dataset to evaluate the model on.")
+    parser.add_argument("-n", "--num-samples", type=int, default=None,
+                        help="Number of samples to evaluate (default: all).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Increase output verbosity.")
 
-    parser.add_argument(
-        "--model",
-        "-m",
-        type=str,
-        required=False,
-        default="codeparrot/codeparrot",
-        help="The model to evaluate on code completion task (CodeParrot default).",
-    )
-
-    parser.add_argument(
-        "--dataset",
-        "-d",
-        type=str,
-        required=False,
-        default="nada-mou/ML4SE-exact-dedup-file-final",
-        help="The dataset to evaluate the model on.",
-    )
-
-    parser.add_argument(
-        "--num-samples",
-        "-n",
-        type=int,
-        required=False,
-        default=None,
-        help="The number of samples to evaluate the model on.",
-    )
-
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        required=False,
-        help="Increase output verbosity.",
-    )
-
-    # Parse the arguments
     args = parser.parse_args()
-    model_name = args.model
-    dataset_name = args.dataset
-    num_samples = args.num_samples
 
-    # Input Validation
-    if not model_name:
-        raise ValueError(
-            "Please specify the model to evaluate on code completion tasks."
-        )
-    if not dataset_name:
-        raise ValueError("Please specify the dataset to evaluate the model on.")
-    if num_samples is not None and num_samples < 3:
-        raise ValueError(
-            "Please specify a valid number of samples to evaluate the model on."
-        )
+    # Input validation
+    if args.num_samples is not None and args.num_samples < 3:
+        raise ValueError("Number of samples must be at least 3 or None for full dataset.")
 
-    logger.info(
-        f"Evaluating model: '{model_name}' on dataset: '{dataset_name}' for {num_samples if num_samples else 'all'} samples."
-    )
+    logger.info(f"Evaluating model '{args.model}' on dataset '{args.dataset}' for {args.num_samples or 'all'} samples.")
 
-    # Load the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(args.model)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Load the dataset
-    logger.info(f"Loading dataset: {dataset_name}")
-    complete_dataset = load_dataset(dataset_name, split="train")
-    logger.info(f"Total number of samples in the dataset: {len(complete_dataset)}")
+    # Load dataset
+    logger.info(f"Loading dataset: {args.dataset}")
+    complete_dataset = load_dataset(args.dataset, split="train")
+    logger.info(f"Total samples in dataset: {len(complete_dataset)}")
 
-    # Sample the dataset if required
-    eval_dataset = (
-        complete_dataset if num_samples is None else complete_dataset[:num_samples]
-    )
+    # Sample dataset if required
+    eval_dataset = complete_dataset if args.num_samples is None else complete_dataset.select(range(args.num_samples))
 
-    # Preprocess the dataset for code completion
-    logger.info("Preprocessing the dataset...")
-    preprocessing = PreProcessing(
-        dataset=eval_dataset, model=model_name, verbose=args.verbose
-    )
-    dataset = preprocessing.preprocess_dataset()
+    # Preprocess dataset
+    logger.info("Preprocessing dataset...")
+    dataset = PreProcessing(eval_dataset, args.model, args.verbose).preprocess_dataset()
 
-    # Backup the preprocessed dataset
-    dump(dataset, f'preprocessed_dataset_{dataset_name.replace("/", "")}.joblib')
+    # Backup preprocessed dataset
+    dump(dataset, f'preprocessed_{args.dataset.replace("/", "_")}.joblib')
 
-    # Tokenize the datasets into inputs and labels
-    logger.info("Tokenizing the dataset...")
-    dataset_tokenizer = CodeCompletionDataset(dataset, tokenizer, verbose=args.verbose)
-    tokenized_dataset = dataset_tokenizer.tokenize_dataset()
+    # Tokenize dataset
+    logger.info("Tokenizing dataset...")
+    tokenized_dataset = CodeCompletionDataset(dataset, tokenizer, args.verbose).tokenize_dataset()
 
-    # Backup the tokenized dataset
-    dump(tokenized_dataset, f'tokenized_dataset_{dataset_name.replace("/", "")}.joblib')
+    # Backup tokenized dataset
+    dump(tokenized_dataset, f'tokenized_{args.dataset.replace("/", "_")}.joblib')
 
-    # Evaluate the model on code completion
-    logger.info("Evaluating the model on code completion tasks...")
-    eval_pipeline = EvalPipeline(tokenized_dataset, tokenizer, model_name)
-    eval_pipeline.model_evaluate()
+    # Evaluate model
+    logger.info("Evaluating model on code completion tasks...")
+    EvalPipeline(tokenized_dataset, tokenizer, args.model).model_evaluate()
+
+if __name__ == "__main__":
+    main()
